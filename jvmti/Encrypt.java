@@ -81,30 +81,20 @@ public class Encrypt {
 
             //初始class文件字符长度
             byte[] bytes = baos.toByteArray();
-            int lenbyte = bytes.length;
-            if ((lenbyte + 1) % AES_BLOCK_SIZE == 0) {
-                lenbyte = lenbyte + 1;
-            } else {
-                lenbyte = ((lenbyte + 1) / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE;
-            }
-            //用来存储加密后的class字节数组
-            byte[] byte_encrypt = new byte[lenbyte];
+
             String name = entry.getName();
             if (name.endsWith(".class")) {
                 System.out.println("encrypt " + name.replaceAll("/", "."));
                 try {
-                    byte_encrypt = coder.encrypt(bytes);
+                    bytes = coder.encrypt(bytes);
                 } catch (Exception e) {
                     System.out.println("encrypt error happend~");
                     e.printStackTrace();
                 }
-            }else{
-                byte_encrypt=bytes;
             }
-
             JarEntry ne = new JarEntry(name);
             dst_jar.putNextEntry(ne);
-            dst_jar.write(byte_encrypt);
+            dst_jar.write(bytes);
             baos.reset();
         }
         src_jar.close();
