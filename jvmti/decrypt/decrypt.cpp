@@ -5,6 +5,77 @@
 #include <jni.h>
 #include <jni_md.h>
 #include <openssl/aes.h>
+#include <openssl/evp.h>
+typedef unsigned char uint8;
+
+/**
+ *  * Create a 256 bit key and IV using the supplied key_data. salt can be added for taste.
+ *   * Fills in the encryption and decryption ctx objects and returns 0 on success
+ *    **/
+int aes_init(unsigned char *key_data, int key_data_len, unsigned char *salt, EVP_CIPHER_CTX *e_ctx,
+             EVP_CIPHER_CTX *d_ctx)
+{
+  int i, nrounds = 5;
+  unsigned char key[32], iv[32];
+
+  /*
+ *    * Gen key & IV for AES 256 CBC mode. A SHA1 digest is used to hash the supplied key material.
+ *       * nrounds is the number of times the we hash the material. More rounds are more secure but
+ *          * slower.
+ *             */
+  i = EVP_BytesToKey(EVP_aes_256_cbc(), EVP_sha1(), salt, key_data, key_data_len, nrounds, key, iv);
+  if (i != 32) {
+    printf("Key size is %d bits - should be 256 bits\n", i);
+    return -1;
+  }
+
+  EVP_CIPHER_CTX_init(e_ctx);
+  EVP_EncryptInit_ex(e_ctx, EVP_aes_256_cbc(), NULL, key, iv);
+  EVP_CIPHER_CTX_init(d_ctx);
+  EVP_DecryptInit_ex(d_ctx, EVP_aes_256_cbc(), NULL, key, iv);
+
+  return 0;
+}
+
+/*
+ *  * Encrypt *len bytes of data
+ *   * All data going in & out is considered binary (unsigned char[])
+ *    */
+unsigned char *aes_encrypt(EVP_CIPHER_CTX *e, unsigned char *plaintext, int *len)
+{
+  /* max ciphertext len for a n bytes of plaintext is n + AES_BLOCK_SIZE -1 bytes */
+  int c_len = *len + AES_BLOCK_SIZE, f_len = 0;
+  unsigned char *ciphertext = malloc(c_len);
+
+  /* allows reusing of 'e' for multiple encryption cycles */
+  EVP_EncryptInit_ex(e, NULL, NULL, NULL, NULL);
+
+  /* update ciphertext, c_len is filled with the length of ciphertext generated,
+ *     *len is the size of plaintext in bytes */
+  EVP_EncryptUpdate(e, ciphertext, &c_len, plaintext, *len);
+
+  /* update ciphertext with the final remaining bytes */
+  EVP_EncryptFinal_ex(e, ciphertext+c_len, &f_len);
+
+  *len = c_len + f_len;
+  return ciphertext;
+}
+
+/*
+ *  * Decrypt *len bytes of ciphertext
+ *   */
+unsigned char *aes_decrypt(EVP_CIPHER_CTX *e, unsigned char *ciphertext, int *len)
+{
+  /* plaintext will always be equal to or lesser than length of ciphertext*/
+  int p_len = *len, f_len = 0;
+  unsigned char *plaintext = malloc(p_len);
+
+  EVP_DecryptInit_ex(e, NULL, NULL, NULL, NULL);
+  EVP_DecryptUpdate(e, plaintext, &p_len, ciphertext, *len);
+  EVP_DecryptFinal_ex(e, plaintext+p_len, &f_len);
+  *len = p_len + f_len;
+  return plaintext;
+}
 
 void JNICALL
 MyClassFileLoadHook(
@@ -20,80 +91,53 @@ MyClassFileLoadHook(
     unsigned char** new_class_data
 )
 {
-    AES_KEY aes;
-    unsigned char key[AES_BLOCK_SIZE];        // AES_BLOCK_SIZE = 16
-    unsigned char iv[AES_BLOCK_SIZE];        // init vecto
-
-    //  AES 128-bit key
-    for (int i = 0; i<16; ++i) {
-    	key[i] = 32 + i;
-    }
-    // Set decryption key
-    for (int i = 0; i<AES_BLOCK_SIZE; ++i) {
-    	iv[i] = 0;
-    }
-    if (AES_set_decrypt_key(key, 128, &aes) < 0) {
-    	fprintf(stderr, "Unable to set decryption key in AES\n");
-    	exit(-1);
-    }
-
-    *new_class_data_len = class_data_len;
-    jvmti_env->Allocate(class_data_len, new_class_data);
-    unsigned char* my_data = *new_class_data;
+    int olen, len;
+    EVP_CIPHER_CTX en, de;
+    olen = len = class_data_len ;
+    unsigned int salt[] = {12345, 54321}; 
+    uint8 *key_data;
+    int key_data_len, i;
+    key_data = "1243455566";
+    key_data_len = strlen(key_data);
+    /* gen key and iv. init the cipher ctx object */
+    if (aes_init(key_data, key_data_len, (unsigned char *)&salt, &en, &de)) {
+        printf("Couldn't initialize AES cipher\n");
+        return -1;
+     }
     if(name&&strncmp(name,"com/monkey/",3)==0){
         // decrypt
-        AES_cbc_encrypt(class_data, my_data, class_data_len, &aes, iv, AES_DECRYPT);
-//        printf("class name is %s\tclass data length is =%d\tdecrypt string =%x\n",name,class_data_len, my_data));
-        printf("class data length %d\n",class_data_len);
-        printf("%d\n",'\0'==my_data[975]);
-        int current_size=0;
-        for(int start= (class_data_len - 1);start > (class_data_len-16);start--){
-            if (my_data[start]!='\0'){
-                current_size=start;
-                printf("%d ",current_size);
-                break;
-            }
+        unsigned char* my_data;
+       // printf("before decrypted length is %d\n",len);
+	my_data = (uint8 *)aes_decrypt(&de, class_data, &len);
+       // printf("decrypted length is %d\n",len);
+        *new_class_data_len = len-1;
+        jvmti_env->Allocate(len-1, new_class_data);
+        memcpy(*new_class_data,my_data,len-1);
+        free(my_data);
+       // int kk=0;
+       // printf("=================\n");
+       // for(int k=0;k< len-1;k++){
+       //     if(kk % 16 == 0){
+       //         printf("\n");
+       //         printf("%08X: ",kk);
+       //     }
+       //     printf("%002X ",my_data[k]);
+       //     kk++;
+       // }
+       // printf("\n");
+       // printf("=================\n");
+        }else{
+           *new_class_data_len = class_data_len;
+           jvmti_env->Allocate(class_data_len, new_class_data);
+           unsigned char* my_data = *new_class_data;
+           for (int i = 0; i < class_data_len; ++i)
+               {
+                   my_data[i] = class_data[i];
+               }
         }
-        int kk=0;
-        printf("=================\n");
-        for(int k=0;k< class_data_len;k++){
-            if(kk % 16 == 0){
-                printf("\n");
-                printf("%08X: ",kk);
-            }
-            printf("%002X ",my_data[k]);
-            kk++;
-        }
-        printf("\n");
-        printf("=================\n");
-        realloc(my_data,current_size);
-
-    }else{
-       for (int i = 0; i < class_data_len; ++i)
-           {
-               my_data[i] = class_data[i];
-           }
-    }
-
-//    *new_class_data_len = class_data_len;
-//    jvmti_env->Allocate(class_data_len, new_class_data);
-//
-//    unsigned char* my_data = *new_class_data;
-//
-//    if(name&&strncmp(name,"com/monkey/",3)==0){
-//        for (int i = 0; i < class_data_len; ++i)
-//        {
-//            my_data[i] = class_data[i] ;
-//        }
-//        printf("class name is %s\tclass data length is =%d\tdecrypt string =%d\tmy_data is %s\n",name,class_data_len, strlen((const char *)my_data),my_data);
-//    }else{
-//        for (int i = 0; i < class_data_len; ++i)
-//        {
-//            my_data[i] = class_data[i];
-//        }
-//    }
-}
- 
+  EVP_CIPHER_CTX_cleanup(&en);
+  EVP_CIPHER_CTX_cleanup(&de);
+} 
 //agent是在启动时加载的
 JNIEXPORT jint JNICALL
 Agent_OnLoad(

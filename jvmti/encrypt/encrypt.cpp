@@ -81,22 +81,13 @@ Java_Encrypt_encrypt(
     jobject _obj,
     jbyteArray _buf
 ){
-
     jsize len =_env->GetArrayLength(_buf);
-
     unsigned char* dst = (unsigned char*)_env->GetByteArrayElements(_buf, 0);
-
-
     EVP_CIPHER_CTX en, de;
-
     unsigned int salt[] = {12345, 54321};
-
     uint8 *key_data;
-
     int key_data_len, i;
-
     uint8 *input;
-
     key_data = "1243455566";
     key_data_len = strlen(key_data);
     /* gen key and iv. init the cipher ctx object */
@@ -104,19 +95,16 @@ Java_Encrypt_encrypt(
         printf("Couldn't initialize AES cipher\n");
         return -1;
     }
-
     /* encrypt and decrypt each input string and compare with the original */
-    uint8 *plaintext;
     uint8 *ciphertext;
     int olen, length;
-
         /* The enc/dec functions deal with binary data and not C strings. strlen() will
            return length of the string without counting the '\0' string marker. We always
            pass in the marker byte to the encrypt/decrypt functions so that after decryption
            we end up with a legal C string */
     olen = length = len +1;
-
     ciphertext = aes_encrypt(&en, dst, &length);
-    _env->SetByteArrayRegion(_buf, 0, length, (jbyte *)ciphertext);
-    return _buf;
+    jbyteArray jdata = _env->NewByteArray(length);
+    _env->SetByteArrayRegion(jdata, 0, length, (jbyte *)ciphertext);
+    return jdata;
 }

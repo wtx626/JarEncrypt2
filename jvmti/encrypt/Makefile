@@ -15,10 +15,10 @@ endif
 OBJS = encrypt.o
 
 $(TARGET):$(OBJS)
-	$(CC) $(LIBLINK) -o $(TARGET) $(OBJS)
+	$(CC) $(LIBLINK) -o $(TARGET) $(OBJS) -lssl -lcrypto
 
 encrypt.o: encrypt.cpp
-	$(CC) $(INCLUDEDIR) -c encrypt.cpp
+	$(CC) $(INCLUDEDIR) -fpermissive -c encrypt.cpp
 
 .PHONY:clean
 clean:
