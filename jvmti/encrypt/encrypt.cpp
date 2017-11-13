@@ -106,5 +106,6 @@ Java_Encrypt_encrypt(
     ciphertext = aes_encrypt(&en, dst, &length);
     jbyteArray jdata = _env->NewByteArray(length);
     _env->SetByteArrayRegion(jdata, 0, length, (jbyte *)ciphertext);
+    free(ciphertext);
     return jdata;
 }

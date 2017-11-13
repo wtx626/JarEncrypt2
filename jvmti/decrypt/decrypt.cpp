@@ -104,7 +104,8 @@ MyClassFileLoadHook(
         printf("Couldn't initialize AES cipher\n");
         return -1;
      }
-    if(name&&strncmp(name,"com/monkey/",3)==0){
+     //不解密匿名类
+    if(name&&strncmp(name,"com/ntci/",8)==0&&strstr(name,"$anonfun$")==NULL){
         // decrypt
         unsigned char* my_data;
        // printf("before decrypted length is %d\n",len);

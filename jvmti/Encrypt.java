@@ -90,7 +90,8 @@ public class Encrypt {
             //用来存储加密后的class字节数组
             byte[] byte_encrypt = new byte[lenbyte];
             String name = entry.getName();
-            if (name.endsWith(".class")) {
+            //去掉对匿名函数的加密
+            if (name.endsWith(".class")&&!name.contains("$anonfun$")) {
                 System.out.println("encrypt " + name.replaceAll("/", "."));
                 try {
                     byte_encrypt = coder.encrypt(bytes);
